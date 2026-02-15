@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AMIGOS BOX CRICKET</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#0b1d0b;color:white;}
+header{background:linear-gradient(90deg,#0f3d1e,#1faa00);padding:15px;text-align:center;font-size:20px;font-weight:bold;}
+.container{padding:15px;max-width:600px;margin:auto;}
+.card{background:#122a12;border:1px solid #1faa00;padding:15px;border-radius:12px;margin-bottom:15px;}
+h3{margin-top:0;color:#7CFC00;}
+input,select{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:none;}
+button{width:100%;padding:10px;border:none;border-radius:8px;font-weight:bold;margin-top:8px;cursor:pointer;}
+.primary{background:#1faa00;color:white;}
+.danger{background:#cc0000;color:white;}
+.admin{background:#ffcc00;color:black;}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;}
+.slot{padding:8px;text-align:center;border-radius:6px;font-size:12px;cursor:pointer;color:white;}
+.slot.selected{background:#00bfff;} /* Blue for selected */
+.slot.accepted{background:#1faa00;} /* Green for accepted */
+.slot.pending{background:#ffcc00;color:black;} /* Yellow for pending */
+.slot.denied{background:#cc0000;} /* Red for denied/unavailable */
+.bookingItem{background:#0f1f11;padding:6px;border-radius:6px;margin:4px 0;font-size:12px;}
+.customerCard{background:#0f2a0f;padding:10px;border-radius:10px;margin-bottom:8px;}
+.hidden{display:none;}
+.legend{display:flex;justify-content:space-around;margin-bottom:6px;}
+.legend div{padding:6px;border-radius:6px;font-size:12px;text-align:center;color:black;}
+.legend .accepted{background:#1faa00;color:white;} 
+.legend .selected{background:#00bfff;color:white;}
+.legend .pending{background:#ffcc00;color:black;}
+.legend .denied{background:#cc0000;color:white;}
+</style>
+</head>
+<body>
+<header>🏏 AMIGOS BOX CRICKET</header>
+
+<div class="container">
+
+<!-- LOGIN -->
+<div id="login" class="card">
+<h3>Login</h3>
+<input id="name" placeholder="Enter Name">
+<input id="mobile" placeholder="Enter Mobile (+91...)">
+<input type="password" id="ownerPin" placeholder="Enter Owner PIN" style="display:none;">
+<button class="primary" onclick="loginUser()">Login</button>
+</div>
+
+<!-- MAIN PANEL -->
+<div id="main" class="hidden">
+
+<div class="card">
+<h3 id="welcome"></h3>
+<button class="danger" onclick="logout()">Logout</button>
+<button id="adminBtn" class="admin hidden" onclick="showAdmin()">Owner Dashboard</button>
+</div>
+
+<!-- CUSTOMER PANEL -->
+<div id="customerPanel">
+  <div class="card">
+    <h3>Select Date</h3>
+    <input type="date" id="date" onchange="loadSlots()">
+  </div>
+
+  <div class="card">
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="accepted">Accepted</div>
+      <div class="selected">Selected</div>
+      <div class="pending">Pending</div>
+      <div class="denied">Denied</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Select Time Slots (Hours only)</h3>
+    <div class="grid" id="slotGrid"></div>
+  </div>
+
+  <div class="card" id="paymentSection">
+    <h3>Select UPI App</h3>
+    <select id="upiApp">
+      <option value="paytm">Paytm</option>
+      <option value="phonepe">PhonePe</option>
+      <option value="googlepay">Google Pay</option>
+      <option value="bhim">BHIM</option>
+      <option value="other">Other UPI</option>
+    </select>
+    <button class="primary" onclick="payNow()">Pay & Confirm Booking</button>
+  </div>
+
+  <div id="ownerBookSection" class="card hidden">
+    <h3>Book Free Slot (Owner)</h3>
+    <button class="primary" onclick="ownerBook()">Book Free Slot</button>
+  </div>
+
+  <div class="card">
+    <h3>Your Booked Slots</h3>
+    <div id="myBookings"></div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel" class="card hidden">
+<h3>📊 Owner Dashboard</h3>
+<button class="danger" onclick="closeAdmin()">Close</button>
+<button class="danger" onclick="restartBookings()">Restart All Bookings</button>
+<div id="stats"></div>
+<h3>All Customers & Bookings</h3>
+<div id="allCustomers"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+const OWNER_NUMBER="9441666333";
+const OWNER_PIN="6122";
+const UPI_ID="shashikokkula@ybl";
+
+let users=JSON.parse(localStorage.getItem("users"))||{};
+let bookings=JSON.parse(localStorage.getItem("bookings"))||[];
+let currentUser=null;
+let selectedSlots=[];
+
+document.getElementById("mobile").addEventListener("input",function(){
+  const mobile=this.value.replace(/\D/g,"").slice(-10);
+  const pinField=document.getElementById("ownerPin");
+  if(mobile===OWNER_NUMBER){pinField.style.display="block";}
+  else{pinField.style.display="none"; pinField.value="";}
+});
+
+function loginUser(){
+  const name=document.getElementById("name").value.trim();
+  const mobileInput=document.getElementById("mobile").value.trim();
+  const pinInput=document.getElementById("ownerPin").value.trim();
+  if(!name||!mobileInput){alert("Enter Name & Mobile");return;}
+  const last10=mobileInput.replace(/\D/g,"").slice(-10);
+  let role="customer";
+  if(last10===OWNER_NUMBER){if(pinInput===OWNER_PIN){role="owner";}else{alert("Incorrect Owner PIN, login as customer");}}
+
+  users[last10]={ name:name, mobile:last10, totalPaid: users[last10]?.totalPaid||0, freeEligible: users[last10]?.freeEligible||false, role:role };
+  currentUser=users[last10];
+  localStorage.setItem("users",JSON.stringify(users));
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("main").classList.remove("hidden");
+  document.getElementById("welcome").innerText="Welcome "+name+" ("+role.toUpperCase()+")";
+  
+  if(role==="owner"){ 
+    document.getElementById("adminBtn").classList.remove("hidden");
+    document.getElementById("paymentSection").style.display="none";
+    document.getElementById("ownerBookSection").classList.remove("hidden");
+  } else { 
+    document.getElementById("paymentSection").style.display="block"; 
+    document.getElementById("ownerBookSection").classList.add("hidden");
+  }
+
+  loadMyBookings();
+}
+
+function logout(){ location.reload(); }
+
+function loadSlots(){
+  let dateField=document.getElementById("date");
+  let date=dateField.value;
+  if(!date){dateField.valueAsDate=new Date(); date=dateField.value;}
+  selectedSlots=[];
+  const grid=document.getElementById("slotGrid");
+  grid.innerHTML="";
+  
+  const now=new Date();
+  const ISTOffset=5.5*60;
+  const utc=now.getTime() + (now.getTimezoneOffset()*60000);
+  const istTime=new Date(utc + (ISTOffset*60000));
+  const currentHour=istTime.getHours();
+  const todayStr=istTime.toISOString().split("T")[0];
+
+  for(let i=0;i<24;i++){
+    const div=document.createElement("div");
+    div.className="slot";
+    let price = (i>=6 && i<18)?500:600; 
+    div.innerText=i+":00 ₹"+price;
+    
+    const booking = bookings.find(b=>b.date===date && b.start===i);
+    if(booking){
+      if(booking.type==="free" || booking.type==="paid") div.classList.add("accepted");
+      else if(booking.type==="pending") div.classList.add("pending");
+      else if(booking.type==="denied") div.classList.add("denied");
+    } else if(date===todayStr && i<=currentHour){
+      div.classList.add("denied");
+    }
+
+    div.onclick=function(){
+      if(div.classList.contains("accepted") || div.classList.contains("pending") || div.classList.contains("denied")) return;
+      if(div.classList.contains("selected")){div.classList.remove("selected"); selectedSlots=selectedSlots.filter(s=>s!==i);}
+      else{div.classList.add("selected"); selectedSlots.push(i);}
+    };
+    grid.appendChild(div);
+  }
+}
+
+function payNow(){
+  if(selectedSlots.length===0){alert("Select at least one slot"); return;}
+  const date=document.getElementById("date").value;
+  if(!date){alert("Select date"); return;}
+  let amount=selectedSlots.reduce((sum,h)=>sum+((h>=6 && h<18)?500:600),0);
+
+  if(currentUser.role==="owner"){ ownerBook(); return; }
+
+  const app=document.getElementById("upiApp").value;
+  let upiUri="";
+  switch(app){
+    case "paytm": upiUri=`https://paytm.me/${UPI_ID}/${amount}`; break;
+    case "phonepe": upiUri=`phonepe://upi/pay?pa=${UPI_ID}&pn=AMIGOSBOX&am=${amount}&cu=INR`; break;
+    case "googlepay": upiUri=`upi://pay?pa=${UPI_ID}&pn=AMIGOSBOX&am=${amount}&cu=INR`; break;
+    case "bhim": upiUri=`upi://pay?pa=${UPI_ID}&pn=AMIGOSBOX&am=${amount}&cu=INR`; break;
+    default: upiUri=`upi://pay?pa=${UPI_ID}&pn=AMIGOSBOX&am=${amount}&cu=INR`;
+  }
+  window.location.href=upiUri;
+  setTimeout(()=>{ confirmBooking(date,"paid"); },10000); 
+}
+
+function ownerBook(){
+  const date=document.getElementById("date").value;
+  if(!date){alert("Select Date"); return;}
+  if(selectedSlots.length===0){alert("Select at least one slot"); return;}
+
+  selectedSlots.forEach(hour=>{
+    bookings.push({ user:currentUser.mobile, name:currentUser.name, date:date, start:hour, amount:0, type:"free" });
+  });
+
+  localStorage.setItem("bookings",JSON.stringify(bookings));
+  alert("✅ Free Slot Booked by Owner!");
+  selectedSlots=[];
+  loadSlots();
+  loadMyBookings();
+}
+
+function confirmBooking(date,type="paid"){
+  selectedSlots.forEach(hour=>{
+    let price=(hour>=6 && hour<18)?500:600;
+    if(type==="free"){price=0;}
+    bookings.push({ user:currentUser.mobile, name:currentUser.name, date:date, start:hour, amount:price, type:type });
+  });
+
+  if(type==="paid"){
+    currentUser.totalPaid += selectedSlots.length;
+    if(currentUser.totalPaid>=6 && !currentUser.notified){
+      currentUser.freeEligible=true;
+      currentUser.notified=true;
+      alert(`📲 Hi ${currentUser.name}, you have booked up to 6 slots! You are eligible for a free 7th slot. Call +91 9441666333 to claim it!`);
+    }
+  }
+
+  users[currentUser.mobile]=currentUser;
+  localStorage.setItem("users",JSON.stringify(users));
+  localStorage.setItem("bookings",JSON.stringify(bookings));
+  
+  alert("✅ Booking Confirmed (" + type.toUpperCase() + ")");
+  selectedSlots=[];
+  loadSlots();
+  loadMyBookings();
+}
+
+function loadMyBookings(){
+  const div=document.getElementById("myBookings");
+  div.innerHTML="";
+  bookings.filter(b=>b.user===currentUser.mobile).forEach(b=>{
+    div.innerHTML+=`<div class="bookingItem">${b.date} | ${b.start}:00 | ₹${b.amount} | ${b.type}${b.type==="denied"?" ❌ DENIED":""}</div>`;
+  });
+}
+
+function showAdmin(){
+  document.getElementById("adminPanel").classList.remove("hidden");
+  let totalRevenue = bookings.reduce((sum,b)=>b.amount>0?sum+b.amount:sum,0);
+  let freeCount = bookings.filter(b=>b.type==="free").length;
+  let deniedCount = bookings.filter(b=>b.type==="denied").length;
+  document.getElementById("stats").innerHTML = `<p>Total Revenue: ₹${totalRevenue}</p><p>Total Bookings: ${bookings.length}</p><p>Free Slots Given: ${freeCount}</p><p>Denied Slots: ${deniedCount}</p>`;
+  
+  const allDiv=document.getElementById("allCustomers");
+  allDiv.innerHTML="";
+  bookings.forEach((b,i)=>{
+    if(b.type==="denied") return;
+    allDiv.innerHTML+=`<div class="customerCard"><b>${b.name} (${b.user})</b><br>Date: ${b.date} | Hour: ${b.start}:00 | ₹${b.amount} | ${b.type}<br>`+
+    (currentUser.role==="owner" && b.type!=="free"?`<button onclick="acceptBooking(${i})">Accept</button> <button onclick="denyBooking(${i})">Deny</button>`:"")+
+    `</div>`;
+  });
+}
+
+function denyBooking(index){
+  bookings[index].type="denied";
+  localStorage.setItem("bookings",JSON.stringify(bookings));
+  alert("❌ Booking Denied!");
+  showAdmin();
+  loadSlots();
+  loadMyBookings();
+}
+
+function acceptBooking(index){
+  bookings[index].type="paid";
+  localStorage.setItem("bookings",JSON.stringify(bookings));
+  alert("✅ Booking Accepted!");
+  showAdmin();
+  loadSlots();
+  loadMyBookings();
+}
+
+function restartBookings(){
+    if(currentUser.mobile !== OWNER_NUMBER){
+        alert("Only owner can restart bookings!");
+        return;
+    }
+    if(confirm("⚠️ Are you sure you want to delete ALL bookings? This cannot be undone!")){
+        bookings = [];
+        localStorage.setItem("bookings", JSON.stringify(bookings));
+
+        // Reset all customers totalPaid and freeEligible
+        Object.keys(users).forEach(mob=>{
+            users[mob].totalPaid = 0;
+            users[mob].freeEligible = false;
+            users[mob].notified = false;
+        });
+        localStorage.setItem("users", JSON.stringify(users));
+
+        alert("✅ All bookings have been reset!");
+        loadSlots();
+        loadMyBookings();
+        showAdmin();
+    }
+}
+
+function closeAdmin(){ document.getElementById("adminPanel").classList.add("hidden"); }
+
+</script>
+</body>
+</html>
+
